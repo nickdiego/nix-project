@@ -1,0 +1,3 @@
+[submodule "src/nix"]
+	path = src/nix
+	url = https://github.com/WebKitNix/webkitnix.git
