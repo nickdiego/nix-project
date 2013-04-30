@@ -132,3 +132,8 @@ export RPI_NICK=pi@10.60.69.52
 
 export RPI_SDK_HOME=${WEBKIT}/rpi/rpi-sdk
 alias rpi_sdk_start="sudo ./start-rpi-sdk ${RPI_SDK_HOME}"
+
+alias nix="cd $NIX"
+alias webkit="cd $WEBKIT"
+alias wk="cd $NIX/Source/WebKit2"
+alias killall-web-process='killall -9 WebProcess'
