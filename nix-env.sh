@@ -39,7 +39,7 @@ if [ -d $NIX ]; then
 
     PKG_CONFIG_PATH=$NIX_BUILD_DESKTOP_DIR/Dependencies/Root/lib64/pkgconfig \
     WEBKITOUTPUTDIR=$NIX_BUILD_DESKTOP_DIR \
-    ${NIX}/Tools/Scripts/build-webkit --nix --makeargs=-j${JOBS} \
+    ${NIX}/Tools/Scripts/build-webkit --nix --update-nix --makeargs=-j${JOBS} \
       --prefix=${HOME}/local --${CONFIG} 2>&1 | tee $WEBKIT/build/build-desktop-${CONFIG}.log
   }
 
@@ -137,3 +137,6 @@ alias nix="cd $NIX"
 alias webkit="cd $WEBKIT"
 alias wk="cd $NIX/Source/WebKit2"
 alias killall-web-process='killall -9 WebProcess'
+
+## TODO: Layout tests functions
+#./Tools/Scripts/run-webkit-tests --nix --debug --pixel --build-directory=/home/nick/projects/webkit-nix/build/nix-build-desktop --details LayoutTests/compositing/rtl/rtl-absolute-overflow.html
