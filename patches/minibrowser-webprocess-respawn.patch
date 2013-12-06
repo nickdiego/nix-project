@@ -1,0 +1,115 @@
+commit 4e3e05b3e972d8b8cb93d2af097d9f33d4c5add9
+Author: Nick Diego Yamane <nick.yamane@openbossa.org>
+Date:   Wed Apr 3 18:50:36 2013 -0400
+
+    [WIP] MiniBrowser::processDidCrash reimplemented to reuse NIXView instance
+    
+    * The problem was related to *where* NIXView was initializing its
+      "CoordinateGraphicsScene" (TODO: explain it better...)
+    
+    TODO: I don't which is the best approach (or even if is needed) to
+          expose "NIXView::coordinateGraphics" to be activated by the
+          client, for now I added an function to do it in NixView's C API
+    
+    TODO: Report that to upstream (if necessary) https://bugs.webkit.org/show_bug.cgi?id=109980
+    
+    Signed-off-by: Nick Diego Yamane <nick.yamane@openbossa.org>
+
+diff --git a/Source/WebKit2/UIProcess/API/nix/NIXView.cpp b/Source/WebKit2/UIProcess/API/nix/NIXView.cpp
+index 6af7fb0..b953f94 100644
+--- a/Source/WebKit2/UIProcess/API/nix/NIXView.cpp
++++ b/Source/WebKit2/UIProcess/API/nix/NIXView.cpp
+@@ -59,6 +59,11 @@ void NIXViewInitialize(NIXView view)
+     toImpl(view)->initialize();
+ }
+ 
++void NIXViewSetGraphicsSceneActive(NIXView view, bool active)
++{
++    toImpl(view)->setGraphicsSceneActive(active);
++}
++
+ WKSize NIXViewSize(NIXView view)
+ {
+     return toImpl(view)->size();
+diff --git a/Source/WebKit2/UIProcess/API/nix/NIXView.h b/Source/WebKit2/UIProcess/API/nix/NIXView.h
+index b8ad213..5fe3536 100644
+--- a/Source/WebKit2/UIProcess/API/nix/NIXView.h
++++ b/Source/WebKit2/UIProcess/API/nix/NIXView.h
+@@ -91,6 +91,7 @@ WK_EXPORT void NIXViewRelease(NIXView view);
+ WK_EXPORT void NIXViewSetViewClient(NIXView view, const NIXViewClient* viewClient);
+ 
+ WK_EXPORT void NIXViewInitialize(NIXView view);
++WK_EXPORT void NIXViewSetGraphicsSceneActive(NIXView view, bool active);
+ 
+ WK_EXPORT WKSize NIXViewSize(NIXView view);
+ WK_EXPORT void NIXViewSetSize(NIXView view, WKSize size);
+diff --git a/Source/WebKit2/UIProcess/nix/WebView.cpp b/Source/WebKit2/UIProcess/nix/WebView.cpp
+index f8b59be..9e78314 100644
+--- a/Source/WebKit2/UIProcess/nix/WebView.cpp
++++ b/Source/WebKit2/UIProcess/nix/WebView.cpp
+@@ -66,6 +66,11 @@ void WebView::initialize()
+     coordinatedGraphicsScene()->setActive(true);
+ }
+ 
++void WebView::setGraphicsSceneActive(bool value)
++{
++    coordinatedGraphicsScene()->setActive(value);
++}
++
+ void WebView::setTransparentBackground(bool value)
+ {
+     m_webPageProxy->setDrawsTransparentBackground(value);
+diff --git a/Source/WebKit2/UIProcess/nix/WebView.h b/Source/WebKit2/UIProcess/nix/WebView.h
+index ec94c63..afadb13 100644
+--- a/Source/WebKit2/UIProcess/nix/WebView.h
++++ b/Source/WebKit2/UIProcess/nix/WebView.h
+@@ -49,6 +49,7 @@ public:
+     void setViewClient(const NIXViewClient* viewClient);
+ 
+     void initialize();
++    void setGraphicsSceneActive(bool value);
+ 
+     WKSize size() const { return WKSizeMake(m_size.width(), m_size.height()); }
+     void setSize(const WKSize& size);
+diff --git a/Tools/MiniBrowser/nix/main.cpp b/Tools/MiniBrowser/nix/main.cpp
+index 77e7222..0716d94 100644
+--- a/Tools/MiniBrowser/nix/main.cpp
++++ b/Tools/MiniBrowser/nix/main.cpp
+@@ -634,32 +634,18 @@ void MiniBrowser::webProcessCrashed(NIXView, WKStringRef url, const void* client
+     size_t urlStringSize =  WKStringGetMaximumUTF8CStringSize(url);
+     char* urlString = new char[urlStringSize];
+     WKStringGetUTF8CString(url, urlString, urlStringSize);
+-    fprintf(stderr, "The web process has crashed on '%s'.\n", urlString);
+-
+-    delete mb->m_touchMocker;
+-    mb->m_touchMocker = 0;
+-
+-    WKPageTerminate(mb->pageRef());
+-    NIXViewRelease(mb->m_view);
+-
+-    mb->m_context = WKRetainPtr<WKContextRef>(AdoptWK, WKContextCreate());
+-    mb->m_pageGroup = WKRetainPtr<WKPageGroupRef>(AdoptWK, (WKPageGroupCreateWithIdentifier(WKStringCreateWithUTF8CString("MiniBrowser"))));
+-
+-    mb->setPageGroupPreferences(WKPageGroupGetPreferences(mb->m_pageGroup.get()));
+-    mb->m_view = NIXViewCreate(mb->m_context.get(), mb->m_pageGroup.get());
+-    NIXViewInitialize(mb->m_view);
+-    mb->configureWebView();
+ 
++    fprintf(stderr, "** %s The web process has crashed on '%s'. Restarting it...\n", __PRETTY_FUNCTION__, urlString);
+     WKPageLoadURL(mb->pageRef(), WKURLCreateWithUTF8CString(urlString));
+     mb->scheduleUpdateDisplay();
+-
+-    delete urlString;
++    delete []urlString;
+ }
+ 
+ void MiniBrowser::webProcessRelaunched(NIXView, const void* clientInfo)
+ {
+-    UNUSED_PARAM(clientInfo);
+-    fprintf(stdout, "The web process has been restarted.\n");
++    MiniBrowser* mb = static_cast<MiniBrowser*>(const_cast<void*>(clientInfo));
++    NIXViewSetGraphicsSceneActive(mb->m_view, true);
++    fprintf(stderr, "** The web process has been restarted.\n");
+ }
+ 
+ void MiniBrowser::pageDidRequestScroll(NIXView, WKPoint position, const void* clientInfo)

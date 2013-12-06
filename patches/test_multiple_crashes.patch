@@ -1,0 +1,31 @@
+diff --git a/Tools/TestWebKitAPI/Tests/WebKit2/ReloadPageAfterCrash.cpp b/Tools/TestWebKitAPI/Tests/WebKit2/ReloadPageAfterCrash.cpp
+index 7960dcb..d8006aa 100644
+--- a/Tools/TestWebKitAPI/Tests/WebKit2/ReloadPageAfterCrash.cpp
++++ b/Tools/TestWebKitAPI/Tests/WebKit2/ReloadPageAfterCrash.cpp
+@@ -72,14 +72,19 @@ TEST(WebKit2, ReloadPageAfterCrash)
+     WKPageSetPageLoaderClient(webView.page(), &loaderClient);
+ 
+     WKRetainPtr<WKURLRef> url = adoptWK(WKURLCreateWithUTF8CString("about:blank"));
+-    // Load a blank page and next kills WebProcess.
+-    WKPageLoadURL(webView.page(), url.get());
+-    Util::run(&loadBeforeCrash);
+-    WKPageTerminate(webView.page());
++    for (int i = 0; i < 100; ++i) {
++        // Load a blank page and next kills WebProcess.
++        loadBeforeCrash = false;
++        loadAfterCrash = false;
+ 
+-    // Let's try load a page and see what happens.
+-    WKPageLoadURL(webView.page(), url.get());
+-    Util::run(&loadAfterCrash);
++        WKPageLoadURL(webView.page(), url.get());
++        Util::run(&loadBeforeCrash);
++        WKPageTerminate(webView.page());
++
++        // Let's try load a page and see what happens.
++        WKPageLoadURL(webView.page(), url.get());
++        Util::run(&loadAfterCrash);
++    }
+ }
+ 
+ } // namespace TestWebKitAPI

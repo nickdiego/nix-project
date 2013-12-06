@@ -1,0 +1,258 @@
+From 80e98eb90f5c487951f07948a646f03ee8d03674 Mon Sep 17 00:00:00 2001
+From: Adenilson Cavalcanti <cavalcantii@gmail.com>
+Date: Fri, 22 Feb 2013 18:12:24 -0400
+Subject: [PATCH] Fixes on comments per reviewer's request.
+
+Signed-off-by: Adenilson Cavalcanti <cavalcantii@gmail.com>
+---
+ Tools/ChangeLog                                    |   28 +++++
+ Tools/TestWebKitAPI/GNUmakefile.am                 |    1 +
+ Tools/TestWebKitAPI/PlatformEfl.cmake              |    1 +
+ .../TestWebKitAPI.xcodeproj/project.pbxproj        |    4 +
+ .../Tests/WebKit2/LoadPageOnCrash.cpp              |  125 ++++++++++++++++++++
+ Tools/TestWebKitAPI/Tests/WebKit2/WebKit2.pro      |    1 +
+ 6 files changed, 160 insertions(+)
+ create mode 100644 Tools/TestWebKitAPI/Tests/WebKit2/LoadPageOnCrash.cpp
+
+diff --git a/Tools/ChangeLog b/Tools/ChangeLog
+index 674573f..2f04667 100644
+--- a/Tools/ChangeLog
++++ b/Tools/ChangeLog
+@@ -1,3 +1,31 @@
++2013-02-22  Adenilson Cavalcanti  <cavalcantii@gmail.com>
++
++        [WK2] Calls to WKPageLoadURL() when WebProcess was terminated may fail
++        https://bugs.webkit.org/show_bug.cgi?id=109980
++
++        Reviewed by NOBODY (OOPS!).
++
++        Adding a new test file to check if loading a page just after WebProcess
++        has crashed (or was terminated) works.
++
++        This file has 2 tests, one that will execute steps (Load, Crash, Load)
++        within the test function and other that will execute Load at the
++        crash handler function.
++
++        * TestWebKitAPI/GNUmakefile.am:
++        * TestWebKitAPI/PlatformEfl.cmake:
++        * TestWebKitAPI/TestWebKitAPI.xcodeproj/project.pbxproj:
++        * TestWebKitAPI/Tests/WebKit2/LoadPageOnCrash.cpp: Added.
++        (TestWebKitAPI):
++        (WebKit2CrashLoader):
++        (TestWebKitAPI::WebKit2CrashLoader::WebKit2CrashLoader):
++        (TestWebKitAPI::WebKit2CrashLoader::loadUrl):
++        (TestWebKitAPI::WebKit2CrashLoader::crashWebProcess):
++        (TestWebKitAPI::didFinishLoad):
++        (TestWebKitAPI::TEST):
++        (TestWebKitAPI::didCrash):
++        * TestWebKitAPI/Tests/WebKit2/WebKit2.pro:
++
+ 2013-02-22  Kenneth Russell  <kbr@google.com>
+ 
+         Unreviewed. Changed gman's primary address for auto-complete in Bugzilla.
+diff --git a/Tools/TestWebKitAPI/GNUmakefile.am b/Tools/TestWebKitAPI/GNUmakefile.am
+index 7d765e4..24a34d2 100644
+--- a/Tools/TestWebKitAPI/GNUmakefile.am
++++ b/Tools/TestWebKitAPI/GNUmakefile.am
+@@ -151,6 +151,7 @@ Programs_TestWebKitAPI_TestWebKit2_SOURCES = \
+ 	Tools/TestWebKitAPI/Tests/WebKit2/InjectedBundleInitializationUserDataCallbackWins.cpp \
+ 	Tools/TestWebKitAPI/Tests/WebKit2/LoadAlternateHTMLStringWithNonDirectoryURL.cpp \
+ 	Tools/TestWebKitAPI/Tests/WebKit2/LoadCanceledNoServerRedirectCallback.cpp \
++	Tools/TestWebKitAPI/Tests/WebKit2/LoadPageOnCrash.cpp \
+ 	Tools/TestWebKitAPI/Tests/WebKit2/MouseMoveAfterCrash.cpp \
+ 	Tools/TestWebKitAPI/Tests/WebKit2/ReloadPageAfterCrash.cpp \
+ 	Tools/TestWebKitAPI/Tests/WebKit2/ResizeWindowAfterCrash.cpp \
+diff --git a/Tools/TestWebKitAPI/PlatformEfl.cmake b/Tools/TestWebKitAPI/PlatformEfl.cmake
+index 3bcb89b..f43526c 100644
+--- a/Tools/TestWebKitAPI/PlatformEfl.cmake
++++ b/Tools/TestWebKitAPI/PlatformEfl.cmake
+@@ -67,6 +67,7 @@ set(test_webkit2_api_BINARIES
+     InjectedBundleInitializationUserDataCallbackWins
+     LoadAlternateHTMLStringWithNonDirectoryURL
+     LoadCanceledNoServerRedirectCallback
++    LoadPageOnCrash
+     MouseMoveAfterCrash
+     ReloadPageAfterCrash
+     ResizeWindowAfterCrash
+diff --git a/Tools/TestWebKitAPI/TestWebKitAPI.xcodeproj/project.pbxproj b/Tools/TestWebKitAPI/TestWebKitAPI.xcodeproj/project.pbxproj
+index d3733df..ae0bcf0 100644
+--- a/Tools/TestWebKitAPI/TestWebKitAPI.xcodeproj/project.pbxproj
++++ b/Tools/TestWebKitAPI/TestWebKitAPI.xcodeproj/project.pbxproj
+@@ -90,6 +90,7 @@
+ 		81B50193140F232300D9EB58 /* StringBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 81B50192140F232300D9EB58 /* StringBuilder.cpp */; };
+ 		8A2C750E16CED9550024F352 /* ResizeWindowAfterCrash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8A2C750D16CED9550024F352 /* ResizeWindowAfterCrash.cpp */; };
+ 		8A3AF93B16C9ED2700D248C1 /* ReloadPageAfterCrash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8A3AF93A16C9ED2700D248C1 /* ReloadPageAfterCrash.cpp */; };
++		8AA28C1A16D2FA7B002FF4DB /* LoadPageOnCrash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8AA28C1916D2FA7B002FF4DB /* LoadPageOnCrash.cpp */; };
+ 		930AD402150698D00067970F /* lots-of-text.html in Copy Resources */ = {isa = PBXBuildFile; fileRef = 930AD401150698B30067970F /* lots-of-text.html */; };
+ 		9318778915EEC57700A9CCE3 /* NewFirstVisuallyNonEmptyLayoutForImages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93AF4ECA1506F035007FD57E /* NewFirstVisuallyNonEmptyLayoutForImages.cpp */; };
+ 		9361002914DC95A70061379D /* lots-of-iframes.html in Copy Resources */ = {isa = PBXBuildFile; fileRef = 9361002814DC957B0061379D /* lots-of-iframes.html */; };
+@@ -356,6 +357,7 @@
+ 		81B50192140F232300D9EB58 /* StringBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = StringBuilder.cpp; path = WTF/StringBuilder.cpp; sourceTree = "<group>"; };
+ 		8A2C750D16CED9550024F352 /* ResizeWindowAfterCrash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ResizeWindowAfterCrash.cpp; sourceTree = "<group>"; };
+ 		8A3AF93A16C9ED2700D248C1 /* ReloadPageAfterCrash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ReloadPageAfterCrash.cpp; sourceTree = "<group>"; };
++		8AA28C1916D2FA7B002FF4DB /* LoadPageOnCrash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LoadPageOnCrash.cpp; sourceTree = "<group>"; };
+ 		8DD76FA10486AA7600D96B5E /* TestWebKitAPI */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = TestWebKitAPI; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		930AD401150698B30067970F /* lots-of-text.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "lots-of-text.html"; sourceTree = "<group>"; };
+ 		9361002814DC957B0061379D /* lots-of-iframes.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "lots-of-iframes.html"; sourceTree = "<group>"; };
+@@ -658,6 +660,7 @@
+ 				52CB47401448FB9300873995 /* LoadAlternateHTMLStringWithNonDirectoryURL.cpp */,
+ 				33DC8910141953A300747EF7 /* LoadCanceledNoServerRedirectCallback.cpp */,
+ 				33DC89131419579F00747EF7 /* LoadCanceledNoServerRedirectCallback_Bundle.cpp */,
++				8AA28C1916D2FA7B002FF4DB /* LoadPageOnCrash.cpp */,
+ 				33BE5AF4137B5A6C00705813 /* MouseMoveAfterCrash.cpp */,
+ 				33BE5AF8137B5AAE00705813 /* MouseMoveAfterCrash_Bundle.cpp */,
+ 				93F1DB3014DA20760024C362 /* NewFirstVisuallyNonEmptyLayout.cpp */,
+@@ -1037,6 +1040,7 @@
+ 				26300B1816755CD90066886D /* ListHashSet.cpp in Sources */,
+ 				52CB47411448FB9300873995 /* LoadAlternateHTMLStringWithNonDirectoryURL.cpp in Sources */,
+ 				33DC8911141953A300747EF7 /* LoadCanceledNoServerRedirectCallback.cpp in Sources */,
++				8AA28C1A16D2FA7B002FF4DB /* LoadPageOnCrash.cpp in Sources */,
+ 				B4039F9D15E6D8B3007255D6 /* MathExtras.cpp in Sources */,
+ 				CD5497B415857F0C00B5BC30 /* MediaTime.cpp in Sources */,
+ 				E1220DA0155B25480013E2FC /* MemoryCacheDisableWithinResourceLoadDelegate.mm in Sources */,
+diff --git a/Tools/TestWebKitAPI/Tests/WebKit2/LoadPageOnCrash.cpp b/Tools/TestWebKitAPI/Tests/WebKit2/LoadPageOnCrash.cpp
+new file mode 100644
+index 0000000..dc854d5
+--- /dev/null
++++ b/Tools/TestWebKitAPI/Tests/WebKit2/LoadPageOnCrash.cpp
+@@ -0,0 +1,125 @@
++/*
++ * Copyright (C) 2013 Adenilson Cavalcanti <cavalcantii@gmail.com>
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "PlatformUtilities.h"
++#include "PlatformWebView.h"
++#include "Test.h"
++#include <WebKit2/WKRetainPtr.h>
++
++namespace TestWebKitAPI {
++
++static void didFinishLoad(WKPageRef, WKFrameRef, WKTypeRef, const void*);
++
++class WebKit2CrashLoader {
++public:
++    WebKit2CrashLoader()
++        : context(AdoptWK, WKContextCreate())
++        , webView(context.get())
++        , url(adoptWK(WKURLCreateWithUTF8CString("about:blank")))
++        , firstSuccessfulLoad(false)
++        , secondSuccessfulLoad(false)
++    {
++        memset(&loaderClient, 0, sizeof(loaderClient));
++        loaderClient.clientInfo = this;
++        loaderClient.didFinishLoadForFrame = didFinishLoad;
++        WKPageSetPageLoaderClient(webView.page(), &loaderClient);
++    }
++
++    void loadUrl()
++    {
++        WKPageLoadURL(webView.page(), url.get());
++    }
++
++    void crashWebProcess()
++    {
++        WKPageTerminate(webView.page());
++    }
++
++    WKRetainPtr<WKContextRef> context;
++    WKPageLoaderClient loaderClient;
++    PlatformWebView webView;
++    WKRetainPtr<WKURLRef> url;
++
++    bool firstSuccessfulLoad;
++    bool secondSuccessfulLoad;
++};
++
++// This is shared for both tests, since we are going to have 2 load events
++// intertwined by a crash (i.e. Load -> Crash -> Load).
++void didFinishLoad(WKPageRef page, WKFrameRef frame, WKTypeRef userData, const void* clientInfo)
++{
++    WebKit2CrashLoader* testHelper = const_cast<WebKit2CrashLoader*>(static_cast<const WebKit2CrashLoader*>(clientInfo));
++
++    // First load worked, let's crash WebProcess.
++    if (!testHelper->firstSuccessfulLoad) {
++        testHelper->firstSuccessfulLoad = true;
++        return;
++    }
++
++    // Second load worked, we are done.
++    EXPECT_TRUE(testHelper->firstSuccessfulLoad);
++    if (!testHelper->secondSuccessfulLoad) {
++        testHelper->secondSuccessfulLoad = true;
++        return;
++    }
++}
++
++// This test will load a blank page and next kill WebProcess, the expected
++// result is that a call to page load should spawn a new WebProcess.
++TEST(WebKit2, LoadPageAfterCrash)
++{
++    WebKit2CrashLoader helper;
++    helper.loadUrl();
++    Util::run(&helper.firstSuccessfulLoad);
++    helper.crashWebProcess();
++    helper.loadUrl();
++    Util::run(&helper.secondSuccessfulLoad);
++}
++
++// Crash handler, used only by the test below.
++static void didCrash(WKPageRef page, const void* clientInfo)
++{
++    WebKit2CrashLoader* testHelper = const_cast<WebKit2CrashLoader*>(static_cast<const WebKit2CrashLoader*>(clientInfo));
++
++    // The test below expects the crash handler to load a page.
++    EXPECT_TRUE(testHelper->firstSuccessfulLoad);
++    testHelper->loadUrl();
++}
++
++// Here we will load a page and next kill WebProcess, but this time the
++// call to load a page is done in the crash handler function.
++TEST(WebKit2, LoadPageInCrashHandler)
++{
++    WebKit2CrashLoader helper;
++    helper.loaderClient.processDidCrash = didCrash;
++    helper.loadUrl();
++    Util::run(&helper.firstSuccessfulLoad);
++    helper.crashWebProcess();
++    Util::run(&helper.secondSuccessfulLoad);
++}
++
++
++} // namespace TestWebKitAPI
+diff --git a/Tools/TestWebKitAPI/Tests/WebKit2/WebKit2.pro b/Tools/TestWebKitAPI/Tests/WebKit2/WebKit2.pro
+index 9452a5a..1d06379 100644
+--- a/Tools/TestWebKitAPI/Tests/WebKit2/WebKit2.pro
++++ b/Tools/TestWebKitAPI/Tests/WebKit2/WebKit2.pro
+@@ -19,6 +19,7 @@ SOURCES += \
+     InjectedBundleInitializationUserDataCallbackWins.cpp \
+     LoadAlternateHTMLStringWithNonDirectoryURL.cpp \
+     LoadCanceledNoServerRedirectCallback.cpp \
++    LoadPageOnCrash.cpp \
+     MouseMoveAfterCrash.cpp \
+     PageLoadBasic.cpp \
+     PageLoadDidChangeLocationWithinPageForFrame.cpp \
+-- 
+1.7.10.4
+

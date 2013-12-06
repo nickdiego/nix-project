@@ -1,0 +1,451 @@
+diff --git a/Source/WebKit2/ChangeLog b/Source/WebKit2/ChangeLog
+index ad6521e..6d93e73 100644
+--- a/Source/WebKit2/ChangeLog
++++ b/Source/WebKit2/ChangeLog
+@@ -1,3 +1,56 @@
++2013-05-30  Byungwoo Lee  <bw80.lee@samsung.com>
++
++        [EFL][WK2] Separate dispatch context from WorkQueue.
++        https://bugs.webkit.org/show_bug.cgi?id=115332
++
++        Reviewed by NOBODY (OOPS!).
++
++        Refactor WorkQueue to prevent dangling workqueue access.
++
++        Previously, WorkQueue class have all context about dispatch.
++        WorkQueue had dispatch item queue and socket event handler,
++        and those are accessed on the work queue thread through WorkQueue
++        instance.
++
++        With referance countable WorkQueue concept, this implementation
++        complicates handling workqueue ref-counting and makes dangling
++        workqueue access problem.
++
++        To make it easy to handle WorkQueue reference count and to prevent
++        dangling access problem, DispatchQueue class is added to handle
++        dispatch tasks and the lifecycle of the DispatchQueue instance will
++        follow the workqueue thread not WorkQueue instance.
++
++        * Platform/WorkQueue.h:
++        * Platform/efl/WorkQueueEfl.cpp:
++        (WorkItem::~WorkItem):
++        (WorkItem::dispatch):
++        (WorkItem::create):
++        (WorkItem::WorkItem):
++        (TimerWorkItem::expireTime):
++        (TimerWorkItem::expired):
++        (TimerWorkItem::create):
++        (TimerWorkItem::TimerWorkItem):
++        (WorkQueue::platformInitialize):
++        (DispatchQueue::DispatchQueue):
++        (WorkQueue::platformInvalidate):
++        (DispatchQueue::dispatchRelease):
++        (DispatchQueue::performWork):
++        (DispatchQueue::performFileDescriptorWork):
++        (DispatchQueue::getNextTimeOut):
++        (DispatchQueue::insertTimerWorkItem):
++        (DispatchQueue::performTimerWork):
++        (DispatchQueue::wakeup):
++        (DispatchQueue::dispatchQueueThread):
++        (DispatchQueue::~DispatchQueue):
++        (WorkQueue::registerSocketEventHandler):
++        (DispatchQueue::registerSocketEventHandler):
++        (WorkQueue::unregisterSocketEventHandler):
++        (DispatchQueue::unregisterSocketEventHandler):
++        (WorkQueue::dispatch):
++        (DispatchQueue::dispatch):
++        (WorkQueue::dispatchAfterDelay):
++
+ 2013-05-29  Anders Carlsson  <andersca@apple.com>
+ 
+         WebKit should expose HSTS APIs to determine whether a host is in the HSTS cache and to reset HSTS policies
+diff --git a/Source/WebKit2/Platform/WorkQueue.h b/Source/WebKit2/Platform/WorkQueue.h
+index d954f57..74535c0 100644
+--- a/Source/WebKit2/Platform/WorkQueue.h
++++ b/Source/WebKit2/Platform/WorkQueue.h
+@@ -56,6 +56,8 @@ QT_END_NAMESPACE
+ typedef gboolean (*GSourceFunc) (gpointer data);
+ #elif PLATFORM(EFL)
+ #include <Ecore.h>
++
++class DispatchQueue;
+ #endif
+ 
+ class WorkQueue : public ThreadSafeRefCounted<WorkQueue> {
+@@ -167,46 +169,7 @@ private:
+     HashMap<int, Vector<SocketEventSource*>> m_eventSources;
+     typedef HashMap<int, Vector<SocketEventSource*>>::iterator SocketEventSourceIterator;
+ #elif PLATFORM(EFL)
+-    class TimerWorkItem {
+-    public:
+-        static PassOwnPtr<TimerWorkItem> create(Function<void()>, double expireTime);
+-        void dispatch() { m_function(); }
+-        double expireTime() const { return m_expireTime; }
+-        bool expired(double currentTime) const { return currentTime >= m_expireTime; }
+-
+-    protected:
+-        TimerWorkItem(Function<void()>, double expireTime);
+-
+-    private:
+-        Function<void()> m_function;
+-        double m_expireTime;
+-    };
+-
+-    fd_set m_fileDescriptorSet;
+-    int m_maxFileDescriptor;
+-    int m_readFromPipeDescriptor;
+-    int m_writeToPipeDescriptor;
+-    Mutex m_writeToPipeDescriptorLock;
+-
+-    bool m_threadLoop;
+-
+-    Vector<Function<void()>> m_workItemQueue;
+-    Mutex m_workItemQueueLock;
+-
+-    int m_socketDescriptor;
+-    Function<void()> m_socketEventHandler;
+-
+-    Vector<OwnPtr<TimerWorkItem>> m_timerWorkItems;
+-    Mutex m_timerWorkItemsLock;
+-
+-    void sendMessageToThread(const char*);
+-    static void* workQueueThread(WorkQueue*);
+-    void performWork();
+-    void performFileDescriptorWork();
+-    static double getCurrentTime();
+-    struct timeval* getNextTimeOut();
+-    void performTimerWork();
+-    void insertTimerWorkItem(PassOwnPtr<TimerWorkItem>);
++    DispatchQueue* m_dispatchQueue;
+ #endif
+ };
+ 
+diff --git a/Source/WebKit2/Platform/efl/WorkQueueEfl.cpp b/Source/WebKit2/Platform/efl/WorkQueueEfl.cpp
+index ebdb8a6..0a71a05 100644
+--- a/Source/WebKit2/Platform/efl/WorkQueueEfl.cpp
++++ b/Source/WebKit2/Platform/efl/WorkQueueEfl.cpp
+@@ -25,26 +25,108 @@
+ #include <wtf/CurrentTime.h>
+ 
+ static const int invalidSocketDescriptor = -1;
+-static const int threadMessageSize = 1;
+-static const char finishThreadMessage[] = "F";
+-static const char wakupThreadMessage[] = "W";
++static const char wakeupThreadMessage = 'W';
+ 
+-PassOwnPtr<WorkQueue::TimerWorkItem> WorkQueue::TimerWorkItem::create(Function<void()> function, double expireTime)
++class WorkItem {
++public:
++    static PassOwnPtr<WorkItem> create(WorkQueue*, const Function<void()>&);
++    ~WorkItem() { m_workQueue->deref(); }
++    void dispatch() { m_function(); }
++
++protected:
++    WorkItem(WorkQueue*, const Function<void()>&);
++
++private:
++    WorkQueue* m_workQueue;
++    Function<void()> m_function;
++};
++
++PassOwnPtr<WorkItem> WorkItem::create(WorkQueue* workQueue, const Function<void()>& function)
++{
++    return adoptPtr<WorkItem>(new WorkItem(workQueue, function));
++}
++
++WorkItem::WorkItem(WorkQueue* workQueue, const Function<void()>& function)
++    : m_workQueue(workQueue)
++    , m_function(function)
++{
++    ASSERT(m_workQueue);
++
++    m_workQueue->ref();
++}
++
++class TimerWorkItem : public WorkItem {
++public:
++    static PassOwnPtr<TimerWorkItem> create(WorkQueue*, const Function<void()>&, double expireTime);
++    double expireTime() const { return m_expireTime; }
++    bool expired(double currentTime) const { return currentTime >= m_expireTime; }
++
++protected:
++    TimerWorkItem(WorkQueue*, const Function<void()>&, double expireTime);
++
++private:
++    double m_expireTime;
++};
++
++PassOwnPtr<TimerWorkItem> TimerWorkItem::create(WorkQueue* workQueue, const Function<void()>& function, double expireTime)
+ {
+     if (expireTime < 0)
+         return nullptr;
+ 
+-    return adoptPtr(new TimerWorkItem(function, expireTime));
++    return adoptPtr(new TimerWorkItem(workQueue, function, expireTime));
+ }
+ 
+-WorkQueue::TimerWorkItem::TimerWorkItem(Function<void()> function, double expireTime)
+-    : m_function(function)
++TimerWorkItem::TimerWorkItem(WorkQueue* workQueue, const Function<void()>& function, double expireTime)
++    : WorkItem(workQueue, function)
+     , m_expireTime(expireTime)
+ {
+ }
+ 
++class DispatchQueue {
++public:
++    DispatchQueue(const char* name);
++    ~DispatchQueue();
++
++    void dispatch(PassOwnPtr<WorkItem>);
++    void dispatch(PassOwnPtr<TimerWorkItem>);
++    void dispatchRelease();
++    void registerSocketEventHandler(int, const Function<void()>&);
++    void unregisterSocketEventHandler(int);
++
++private:
++    fd_set m_fileDescriptorSet;
++    int m_maxFileDescriptor;
++    int m_readFromPipeDescriptor;
++    int m_writeToPipeDescriptor;
++    Mutex m_writeToPipeDescriptorLock;
++
++    bool m_threadLoop;
++
++    int m_socketDescriptor;
++    Function<void()> m_socketEventHandler;
++
++    Vector<OwnPtr<WorkItem> > m_workItemQueue;
++    Mutex m_workItemQueueLock;
++
++    Vector<OwnPtr<TimerWorkItem> > m_timerWorkItems;
++    Mutex m_timerWorkItemsLock;
++
++    void performWork();
++    void performTimerWork();
++    void performFileDescriptorWork();
++    void insertTimerWorkItem(PassOwnPtr<TimerWorkItem>);
++    static void* dispatchQueueThread(DispatchQueue*);
++    void wakeup();
++    struct timeval* getNextTimeOut();
++};
++
+ void WorkQueue::platformInitialize(const char* name)
+ {
++    m_dispatchQueue = new DispatchQueue(name);
++}
++
++DispatchQueue::DispatchQueue(const char* name)
++{
+     int fds[2];
+     if (pipe(fds))
+         ASSERT_NOT_REACHED();
+@@ -58,18 +140,29 @@ void WorkQueue::platformInitialize(const char* name)
+     m_socketDescriptor = invalidSocketDescriptor;
+ 
+     m_threadLoop = true;
+-    createThread(reinterpret_cast<WTF::ThreadFunction>(&WorkQueue::workQueueThread), this, name);
++    createThread(reinterpret_cast<WTF::ThreadFunction>(&DispatchQueue::dispatchQueueThread), this, name);
+ }
+ 
+ void WorkQueue::platformInvalidate()
+ {
+-    sendMessageToThread(finishThreadMessage);
++    // m_dispatchQueue will be deleted on the dispatch queue thread.
++    DispatchQueue* dispatchQueue = m_dispatchQueue;
++    m_dispatchQueue = 0;
++    dispatchQueue->dispatchRelease();
++}
++
++void DispatchQueue::dispatchRelease()
++{
++    ASSERT(m_socketDescriptor == invalidSocketDescriptor);
++
++    m_threadLoop = false;
++    wakeup();
+ }
+ 
+-void WorkQueue::performWork()
++void DispatchQueue::performWork()
+ {
+     while (true) {
+-        Vector<Function<void()> > workItemQueue;
++        Vector<OwnPtr<WorkItem> > workItemQueue;
+ 
+         {
+             MutexLocker locker(m_workItemQueueLock);
+@@ -79,24 +172,22 @@ void WorkQueue::performWork()
+             m_workItemQueue.swap(workItemQueue);
+         }
+ 
+-        for (size_t i = 0; i < workItemQueue.size(); ++i) {
+-            workItemQueue[i]();
+-            deref();
+-        }
++        for (size_t i = 0; i < workItemQueue.size(); ++i)
++            workItemQueue[i]->dispatch();
+     }
+ }
+ 
+-void WorkQueue::performFileDescriptorWork()
++void DispatchQueue::performFileDescriptorWork()
+ {
+     fd_set readFileDescriptorSet = m_fileDescriptorSet;
+ 
+     if (select(m_maxFileDescriptor + 1, &readFileDescriptorSet, 0, 0, getNextTimeOut()) >= 0) {
+         if (FD_ISSET(m_readFromPipeDescriptor, &readFileDescriptorSet)) {
+-            char readBuf[threadMessageSize];
+-            if (read(m_readFromPipeDescriptor, readBuf, threadMessageSize) == -1)
++            char message;
++            if (read(m_readFromPipeDescriptor, &message, sizeof(char)) == -1)
+                 LOG_ERROR("Failed to read from WorkQueueThread pipe");
+-            if (!strncmp(readBuf, finishThreadMessage, threadMessageSize))
+-                m_threadLoop = false;
++
++            ASSERT(message == wakeupThreadMessage);
+         }
+ 
+         if (m_socketDescriptor != invalidSocketDescriptor && FD_ISSET(m_socketDescriptor, &readFileDescriptorSet))
+@@ -104,7 +195,7 @@ void WorkQueue::performFileDescriptorWork()
+     }
+ }
+ 
+-struct timeval* WorkQueue::getNextTimeOut()
++struct timeval* DispatchQueue::getNextTimeOut()
+ {
+     MutexLocker locker(m_timerWorkItemsLock);
+     if (m_timerWorkItems.isEmpty())
+@@ -122,7 +213,7 @@ struct timeval* WorkQueue::getNextTimeOut()
+     return &timeValue;
+ }
+ 
+-void WorkQueue::insertTimerWorkItem(PassOwnPtr<TimerWorkItem> item)
++void DispatchQueue::insertTimerWorkItem(PassOwnPtr<TimerWorkItem> item)
+ {
+     if (!item)
+         return;
+@@ -138,7 +229,7 @@ void WorkQueue::insertTimerWorkItem(PassOwnPtr<TimerWorkItem> item)
+     m_timerWorkItems.insert(position, item);
+ }
+ 
+-void WorkQueue::performTimerWork()
++void DispatchQueue::performTimerWork()
+ {
+     Vector<OwnPtr<TimerWorkItem> > timerWorkItems;
+ 
+@@ -164,33 +255,44 @@ void WorkQueue::performTimerWork()
+ 
+         // If a timer work item expired, dispatch the function of the work item.
+         timerWorkItems[i]->dispatch();
+-        deref();
+     }
+ }
+ 
+-void WorkQueue::sendMessageToThread(const char* message)
++void DispatchQueue::wakeup()
+ {
+     MutexLocker locker(m_writeToPipeDescriptorLock);
+-    if (write(m_writeToPipeDescriptor, message, threadMessageSize) == -1)
++    if (write(m_writeToPipeDescriptor, &wakeupThreadMessage, sizeof(char)) == -1)
+         LOG_ERROR("Failed to wake up WorkQueue Thread");
+ }
+ 
+-void* WorkQueue::workQueueThread(WorkQueue* workQueue)
++void* DispatchQueue::dispatchQueueThread(DispatchQueue* dispatchQueue)
+ {
+-    while (workQueue->m_threadLoop) {
+-        workQueue->performWork();
+-        workQueue->performTimerWork();
+-        workQueue->performFileDescriptorWork();
++    while (dispatchQueue->m_threadLoop) {
++        dispatchQueue->performWork();
++        dispatchQueue->performTimerWork();
++        dispatchQueue->performFileDescriptorWork();
+     }
+ 
+-    close(workQueue->m_readFromPipeDescriptor);
+-    close(workQueue->m_writeToPipeDescriptor);
+-
++    delete dispatchQueue;
+     return 0;
+ }
+ 
++DispatchQueue::~DispatchQueue()
++{
++    close(m_readFromPipeDescriptor);
++    close(m_writeToPipeDescriptor);
++}
++
+ void WorkQueue::registerSocketEventHandler(int fileDescriptor, const Function<void()>& function)
+ {
++    if (!m_dispatchQueue)
++        return;
++
++    m_dispatchQueue->registerSocketEventHandler(fileDescriptor, function);
++}
++
++void DispatchQueue::registerSocketEventHandler(int fileDescriptor, const Function<void()>& function)
++{
+     if (m_socketDescriptor != invalidSocketDescriptor)
+         LOG_ERROR("%d is already registerd.", fileDescriptor);
+ 
+@@ -204,6 +306,14 @@ void WorkQueue::registerSocketEventHandler(int fileDescriptor, const Function<vo
+ 
+ void WorkQueue::unregisterSocketEventHandler(int fileDescriptor)
+ {
++    if (!m_dispatchQueue)
++        return;
++
++    m_dispatchQueue->unregisterSocketEventHandler(fileDescriptor);
++}
++
++void DispatchQueue::unregisterSocketEventHandler(int fileDescriptor)
++{
+     m_socketDescriptor = invalidSocketDescriptor;
+ 
+     if (fileDescriptor == m_maxFileDescriptor)
+@@ -213,26 +323,35 @@ void WorkQueue::unregisterSocketEventHandler(int fileDescriptor)
+ 
+ void WorkQueue::dispatch(const Function<void()>& function)
+ {
+-    ref();
++    if (!m_dispatchQueue)
++        return;
+ 
++    m_dispatchQueue->dispatch(WorkItem::create(this, function));
++}
++
++void DispatchQueue::dispatch(PassOwnPtr<WorkItem> item)
++{
+     {
+         MutexLocker locker(m_workItemQueueLock);
+-        m_workItemQueue.append(function);
++        m_workItemQueue.append(item);
+     }
+ 
+-    sendMessageToThread(wakupThreadMessage);
++    wakeup();
+ }
+ 
+ void WorkQueue::dispatchAfterDelay(const Function<void()>& function, double delay)
+ {
+-    if (delay < 0)
++    if (delay < 0 || !m_dispatchQueue)
+         return;
+ 
+-    OwnPtr<TimerWorkItem> timerWorkItem = TimerWorkItem::create(function, currentTime() + delay);
+-    if (!timerWorkItem)
++    m_dispatchQueue->dispatch(TimerWorkItem::create(this, function, currentTime() + delay));
++}
++
++void DispatchQueue::dispatch(PassOwnPtr<TimerWorkItem> item)
++{
++    if (!item)
+         return;
+ 
+-    ref();
+-    insertTimerWorkItem(timerWorkItem.release());
+-    sendMessageToThread(wakupThreadMessage);
++    insertTimerWorkItem(item);
++    wakeup();
+ }

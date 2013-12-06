@@ -1,0 +1,121 @@
+diff --git a/Source/Platform/nix/src/DefaultWebThemeEngine.cpp b/Source/Platform/nix/src/DefaultWebThemeEngine.cpp
+index 597efaf..c9ad9de 100644
+--- a/Source/Platform/nix/src/DefaultWebThemeEngine.cpp
++++ b/Source/Platform/nix/src/DefaultWebThemeEngine.cpp
+@@ -395,6 +395,10 @@ static void paintRoundedRectangle(Canvas* canvas, const Rect& rect, int radius,
+     }
+ }
+ 
++#define DEBUG_RECT \
++    paintRoundedRectangle(canvas, rect, 1, false, 255, 0, 0); \
++    cairo_restore(canvas);
++
+ void DefaultWebThemeEngine::paintMediaPlayButton(Canvas* canvas, State state, const Rect& rect) const
+ {
+     cairo_save(canvas);
+@@ -413,6 +417,7 @@ void DefaultWebThemeEngine::paintMediaPlayButton(Canvas* canvas, State state, co
+         cairo_fill(canvas);
+     }
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaOverlayPlayButton(Canvas*, State, const Rect&) const
+@@ -428,22 +433,22 @@ void DefaultWebThemeEngine::paintMediaMuteButton(Canvas* canvas, State state, co
+         cairo_set_line_width(canvas, 1);
+         cairo_set_source_rgb(canvas, 139, 0, 0);
+ 
+-        cairo_move_to(canvas, rect.x + (rect.width * 0.64), rect.y + (rect.height * 0.67));
+-        cairo_line_to(canvas, rect.x + (rect.width * 0.92), rect.y + (rect.height * 0.34));
++        cairo_move_to(canvas, rect.x + (rect.width * 0.59), rect.y + (rect.height * 0.67));
++        cairo_line_to(canvas, rect.x + (rect.width * 0.87), rect.y + (rect.height * 0.34));
+         cairo_stroke(canvas);
+ 
+-        cairo_move_to(canvas, rect.x + (rect.width * 0.92), rect.y + (rect.height * 0.67));
+-        cairo_line_to(canvas, rect.x + (rect.width * 0.64), rect.y + (rect.height * 0.34));
++        cairo_move_to(canvas, rect.x + (rect.width * 0.87), rect.y + (rect.height * 0.67));
++        cairo_line_to(canvas, rect.x + (rect.width * 0.59), rect.y + (rect.height * 0.34));
+         cairo_stroke(canvas);
+     } else { // If state is StateNormal.
+         cairo_set_line_width(canvas, 5);
+         cairo_set_source_rgb(canvas, CheckColor, CheckColor, CheckColor);
+ 
+-        cairo_arc(canvas, rect.x + (rect.width * 0.5), rect.y + (rect.height * 0.5), rect.width * 0.2, 7*(Pi/4), Pi/4);
++        cairo_arc(canvas, rect.x + (rect.width * 0.3), rect.y + (rect.height * 0.5), rect.width * 0.34, 11*(Pi/6), Pi/6);
+         cairo_fill(canvas);
+-        cairo_arc(canvas, rect.x + (rect.width * 0.45), rect.y + (rect.height * 0.5), rect.width * 0.35, 11*(Pi/6), Pi/6);
++        cairo_arc(canvas, rect.x + (rect.width * 0.3), rect.y + (rect.height * 0.5), rect.width * 0.45, 11*(Pi/6), Pi/6);
+         cairo_fill(canvas);
+-        cairo_arc(canvas, rect.x + (rect.width * 0.4), rect.y + (rect.height * 0.5), rect.width * 0.55, 11*(Pi/6), Pi/6);
++        cairo_arc(canvas, rect.x + (rect.width * 0.3), rect.y + (rect.height * 0.5), rect.width * 0.57, 11*(Pi/6), Pi/6);
+         cairo_fill(canvas);
+     }
+ 
+@@ -458,6 +463,7 @@ void DefaultWebThemeEngine::paintMediaMuteButton(Canvas* canvas, State state, co
+     cairo_fill(canvas);
+ 
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaSeekBackButton(Canvas* canvas, const Rect& rect) const
+@@ -483,6 +489,7 @@ void DefaultWebThemeEngine::paintMediaSeekBackButton(Canvas* canvas, const Rect&
+     cairo_fill(canvas);
+ 
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaSeekForwardButton(Canvas* canvas, const Rect& rect) const
+@@ -508,6 +515,7 @@ void DefaultWebThemeEngine::paintMediaSeekForwardButton(Canvas* canvas, const Re
+     cairo_fill(canvas);
+ 
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaSliderTrack(Canvas* canvas, const Rect& rect) const
+@@ -518,13 +526,16 @@ void DefaultWebThemeEngine::paintMediaSliderTrack(Canvas* canvas, const Rect& re
+     Rect r = Rect(rect.x + (rect.width * 0.03), rect.y + (rect.height * 0.4), rect.width * 0.91, rect.height * 0.2);
+     paintRoundedRectangle(canvas, r, 1, false, CheckColor, CheckColor, CheckColor);
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaSliderThumb(Canvas* canvas, const Rect& rect) const
+ {
+     Rect r = Rect(rect.x, rect.y + (rect.height * 0.2), rect.width * 0.5, rect.height * 0.6);
+     paintRoundedRectangle(canvas, r, 1, true, CheckColor, CheckColor, CheckColor);
++
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaVolumeSliderContainer(Canvas*, State, const Rect&) const
+@@ -558,6 +569,7 @@ void DefaultWebThemeEngine::paintMediaRewindButton(Canvas* canvas, const Rect& r
+     cairo_fill(canvas);
+ 
+     cairo_restore(canvas);
++    DEBUG_RECT
+ }
+ 
+ void DefaultWebThemeEngine::paintMediaReturnToRealtimeButton(Canvas*, State, const Rect&) const
+@@ -574,14 +586,14 @@ void DefaultWebThemeEngine::paintMediaControlsBackground(Canvas* canvas, const R
+ {
+ }
+ 
+-void DefaultWebThemeEngine::paintMediaCurrentTime(Canvas*, State, const Rect&) const
++void DefaultWebThemeEngine::paintMediaCurrentTime(Canvas* canvas, State, const Rect& rect) const
+ {
+-
++    DEBUG_RECT
+ }
+ 
+-void DefaultWebThemeEngine::paintMediaTimeRemaining(Canvas*, State, const Rect&) const
++void DefaultWebThemeEngine::paintMediaTimeRemaining(Canvas* canvas, State, const Rect& rect) const
+ {
+-
++    DEBUG_RECT
+ }
+ 
+ 

@@ -1,0 +1,4 @@
+{
+    "project_id" : "nix",
+    "conduit_uri": "http://phabricator.coderev.indt.org/"
+}

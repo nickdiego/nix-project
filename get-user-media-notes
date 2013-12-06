@@ -1,0 +1,234 @@
+
+
+UserMediaController is added as a "Supplement" in the WebView implementation
+  - here how it's done on chrome: 
+	https://github.com/rogerwang/blink/blob/node/Source/WebKit/chromium/src/WebViewImpl.cpp#L467
+  - chromium uses webkit-1 archtecture :(
+  - UserMediaClient: an instance is created in WebViewImpl construction
+  - Wrap calls with #if ENABLE(MEDIA_STREAM)
+
+* In WebKit2, this kind of thing seens to commonly done at WebProcess/WebPage class constructor
+* We need to implement UserMediaClient for Nix
+  - currently, there's no implementation of it to webkit2 :(
+  - Questions:
+       - UiProcess needs to be aware of what's going on in UserMediaClient stuff, 
+             - if yes, propably we'll need to export it via Nix Platform API and/or go through 
+		XXXInjectedBundleClient, as is done for InjectedBundlePageContextMenuClient, for example
+             - otherwise, we could implement it in WebCore/platform/nix as is already done for other 
+		components (Qt's DeviceMotionClientQt is might be a good example to start studying..)
+   ...
+
+
+
+UserMedia bootstrap steps (Chromium implementation)
+```````````````````````````````````````````````````
+
+1. It begins at WebViewImpl's instantiation. Which in chromium, starts when an instance of a
+   content/renderer/RenderViewImpl (which inherits from WebViewClient class) is being initialized
+
+2. The WebViewImpl instances its private UserMediaClientImpl m_userMediaClient, passing itself as parameter
+   for its construction
+
+3. The UserMediaClientImpl constructor gets WebViewImpl->client()->userMediaClient() (WebUserMediaClient)
+   and stores it in a private varible, m_client.
+   In chromium, WebViewImpl->client() is a content/renderer/RenderViewImpl, which implements 
+   chromium/public/WebViewClient, with a actual implementation of 'userMediaClient()' method as a kind of
+   singleton instantiation of a content/renderer/media/MediaStreamImpl, this is the class which actually
+   implements WebUserMediaClient (with calls to its native MediaDispatcher, etc..). So, after (3) there will
+   be instances of chromium objects RenderViewImpl and MediaStreamImpl, which implement WebViewClient and
+   WebUserMediaClient respectivelly.
+
+4. Still at WebViewImpl initialization, WebCore::provideUserMediaTo(page, m_userMediaClient) is called. that
+   function, is implemented at WebCore/Modules/mediastream/UserMediaController, in the end it creates a new
+   instance of a MediaStreamController and adds it as a Supplement to that page passed as parameter.
+
+** So, when window.getUserMedia() is called from javascript it reachs webkit's core as a call to 
+   WebCore::NavigatorMediaStream::webkitGetUserMedia() funtion. It then tries to retrieve UserMediaController
+   for that page (previoulsy registered, in step 4), from there it tries to create a UserMediaRequest and 
+   execute it.
+
+TODO: Study more about UserMediaRequest
+
+
+
+-------------------
+
+Proposal: UserMedia bootstrap steps (Nix implementation)
+````````````````````````````````````````````````````````
+
+1. It begins at WebKit2/WebProcess/WebPage's instantiation. 
+
+2. The WebPage instances a new UserMediaClientNix, passing itself as parameter
+   for its construction
+
+3. The UserMediaClientNix asks (via a new NixPlatform API function call) to client a new WebUserMediaClient
+   for that WebPage's ID (page passed as parameter) and stores it in a private varible, m_client.
+   Client applications must implement that function so that 
+
+???.......
+
+4. Still at WebViewImpl initialization, WebCore::provideUserMediaTo(page, m_userMediaClient) is called. that
+   function, is implemented at WebCore/Modules/mediastream/UserMediaController, in the end it creates a new
+   instance of a MediaStreamController and adds it as a Supplement to that page passed as parameter.
+
+** So, when window.getUserMedia() is called from javascript it reachs webkit's core as a call to 
+   WebCore::NavigatorMediaStream::webkitGetUserMedia() funtion. It then tries to retrieve UserMediaController
+   for that page (previoulsy registered, in step 4), from there it tries to create a UserMediaRequest and 
+   execute it.
+
+TODO: Study more about UserMediaRequest
+
+-------------------
+Backport from chromium:
+``````````````````````
+
+## add:
+
+WebKit2/WebProcess/WebCoreSupport/nix/UserMediaClientNix.h
+WebKit2/WebProcess/WebCoreSupport/nix/UserMediaClientNix.cpp *
+
+ Platform/nix/public/WebUserMediaClient.h
+  Platform/nix/public/WebUserMediaRequest.h
+  WebCore/platform/nix/support/WebUserMediaRequest.cpp *
+   Platform/nix/public/WebMediaStreamSource.h
+   WebCore/platform/nix/support/WebMediaStreamSource.cpp
+   Platform/nix/public/WebMediaConstraints.h
+   WebCore/platform/nix/support/WebMediaConstraints.cpp
+   Platform/nix/public/WebMediaStreamTrack.h
+   WebCore/platform/nix/support/WebMediaStreamTrack.cpp
+   Platform/nix/public/WebAudioDestinationConsumer.h
+   Platform/nix/public/WebMediaStream.h
+   WebCore/platform/nix/support/WebMediaStream.cpp
+   Platform/nix/public/WebString.h
+   WebCore/platform/nix/support/WebString.cpp
+   Platform/nix/public/WebCString.h
+   WebCore/platform/nix/support/WebCString.cpp
+   Platform/nix/public/WebNonCopyable.h
+   Platform/nix/public/WebUserPrivatePtr.h
+   Platform/nix/public/WebSecurityOrigin.h
+   WebCore/platform/nix/support/WebSecurityOrigin.cpp *
+   Platform/nix/public/WebURL.h **
+   WebCore/platform/nix/support/WebURL.cpp
+
+   //TODO: Commented method "ownerDocument()" from
+   //      WebUserMediaRequest, to focus on MediaStream.
+   //      Check later real need to include this Class
+   //      into the Nix platform interface
+   Platform/nix/public/WebDocument.h
+   WebCore/platform/nix/support/WebDocument.cpp
+   WebDraggableRegion.h
+   WebNode.h
+
+## modify:
+
+Platform/nix/public/Platform.h
+Platform/nix/src/Platform.cpp 	(??)
+
+(*) Veio do Source/WebKit/chromium/src 
+(**) google-specific, adaptar!
+
+-------------------------------------------------
+Classes novas na API:
+
+WebUserMediaClient
+WebUserMediaRequest
+WebMediaStreamSource
+WebMediaConstraints
+WebMediaStream
+WebAudioDestinationConsumer
+WebMediaStreamTrack
+WebString
+WebCString
+WebNonCopyable
+WebUserPrivatePtr
+WebSecurityOrigin
+WebURL
+
+
+
+--------------------------------------------------
+Mudanças recentes no mediastream do Blink, que nao estao
+no webkit:
+
+* Checar oq realmente se aplica ao webkit (mudanças na spec, 
+  bugfixes, etc..) e submeter patches upstream
+
+Mudanças (log):
+
+based on WebCore/Modules/mediastream/MediaStream.cpp
+````````````````````````````````````````````````````
+bebd179b MediaStream should fire ended event when all tracks are ended
+ * [improvement (?)] confirm this
+ * has a specific layout test
+
+7d740fd2 Moving Add/Remove track from WebMediaStreamCenterClient to WebMediaStream (?)
+ * [wont fix] blink specif modification, for "simplify", since it doesn't need
+   to support other ports, etc..
+ * Check if nix need a implementation of MediaStreamCenter nix in
+   WebCore/platform/mediastream/nix/MediaStreamCenterNix as is done by Chromium
+ ********************** continuar aqui!
+
+67fcacf1 add/removeComponent api added to MediaStreamDescriptor (?)
+ * 
+
+81643ee3 Remove LocalMediaStream, removed from spec :(
+5008a41b Remove flag ENABLE(MEDIA_STREAM), currenlty on blink it's allways true
+
+
+---------------------------------------------------------------------
+
+Web Audio integration
+`````````````````````
+
+Examples: https://dvcs.w3.org/hg/audio/raw-file/tip/webaudio/webrtc-integration.html
+Live input (recently available): https://code.google.com/p/chromium/issues/detail?id=112367 
+
+
+WebCore entry point: WebCore/Modules/webaudio/AudioContext.[h,cpp]
+
+study:
+- AutioNode
+- AudioDestinationNode
+- AudioSourceNode
+- MediaStreamSource
+- MediaStreamAudioSourceNode
+
+
+- AudioListener
+- AudioProcessingEvent
+- DefaultAudioDestinationNode
+- AudioFIFO
+- AudioSessionManager
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
