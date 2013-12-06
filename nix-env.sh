@@ -24,6 +24,7 @@ if [ -d $NIX ]; then
   # configures icecc
   icecc_setup
 
+  # !deprecated
   nix_build_desktop() {
     JOBS=100
 
@@ -147,14 +148,19 @@ alias webkit="cd $WEBKIT"
 alias wk="cd $NIX/Source/WebKit2"
 alias killall-web-process='killall -9 WebProcess'
 
-## TODO: Layout tests functions
-#export WEBKIT_OUTPUTDIR=/home/nick/projects/webkit-nix/build/nix-build-desktop
-#rm ../layout-test-results/ -rf && ./Tools/Scripts/run-webkit-tests --no-show-results --no-new-test-results --no-sample-on-timeout --results-directory ../layout-test-results --builder-name 'Nix Linux 64-bit Release' --debug --nix --exit-after-n-crashes-or-timeouts 10 --exit-after-n-failures 500 --build-directory=/home/nick/projects/webkit-nix/build/nix-build-desktop
-#strace 2>x.log -- /home/nick/projects/webkit-nix/build/nix-build-desktop/Release/bin/WebKitTestRunner  -
 
-#TODO improve this
-efl_build() {
-    $NIX/Tools/Scripts/build-webkit --efl --no-webkit1 --cmakeargs="-DSHARED_CORE=ON" --makeargs="-j100"
+prepare_clang_index() {
+    local port=$1
+    [ -z $port ] && port=nix
+    export CLANG_COMPLETE_CONFIG_PATH=/tmp/$port-clang-completes
+    [ -d $CLANG_COMPLETE_CONFIG_PATH ] || mkdir -v $CLANG_COMPLETE_CONFIG_PATH
+    rm $CLANG_COMPLETE_CONFIG_PATH/* -r
+}
+
+commit_clang_index() {
+    cat $CLANG_COMPLETE_CONFIG_PATH/* | sort -u
+    # TODO save into $NIX/.clang_complete
+    unset CLANG_COMPLETE_CONFIG_PATH
 }
 
 # TODO temp solution / move to use only WEBKIT_OUTPUTDIR
@@ -175,3 +181,39 @@ to_webkit_port() {
 alias tonix='to_webkit_port nix'
 alias toefl='to_webkit_port efl'
 alias togtk='to_webkit_port gtk'
+
+#TODO improve this
+efl_build() {
+    local opt='--no-webkit1 --cmakeargs="-DSHARED_CORE=ON" --prefix=~/local'
+    toefl && $NIX/Tools/Scripts/build-webkit --efl --makeargs=-j100 $opt $@
+    notify-send "webkit-efl build finished!"
+}
+
+gtk_build() {
+    local opt='--no-webkit1 --cmakeargs="-DSHARED_CORE=ON" --prefix=/home/nick/local'
+    togtk && $NIX/Tools/Scripts/build-webkit --gtk --makeargs=-j100 $opt $@
+    notify-send "webkit-gtk build finished!"
+}
+
+nix_build() {
+    prepare_clang_index
+    CMD="tonix && ${NIX}/Tools/Scripts/build-webkit --nix --makeargs=-j100 --prefix=~/local $@"
+    echo -------------
+    echo Command: $CMD
+    echo ------------
+    eval "$CMD" && commit_clang_index
+    notify-send "Nix build finished!!"
+}
+
+wk_runtime_env() {
+  LIBRARY_PATH=$HOME/local/lib:$NIX/WebKitBuild/Dependencies/Root/lib64
+  echo "LD_LIBRARY_PATH=$LIBRARY_PATH ..."
+  export LD_LIBRARY_PATH=$LIBRARY_PATH
+}
+
+## TODO: Layout tests functions
+#export WEBKIT_OUTPUTDIR=/home/nick/projects/webkit-nix/build/nix-build-desktop
+#rm ../layout-test-results/ -rf && ./Tools/Scripts/run-webkit-tests --no-show-results --no-new-test-results --no-sample-on-timeout --results-directory ../layout-test-results --builder-name 'Nix Linux 64-bit Release' --debug --nix --exit-after-n-crashes-or-timeouts 10 --exit-after-n-failures 500 --build-directory=/home/nick/projects/webkit-nix/build/nix-build-desktop
+#strace 2>x.log -- /home/nick/projects/webkit-nix/build/nix-build-desktop/Release/bin/WebKitTestRunner  -
+
+alias sgrep='grep --exclude="*~" --exclude="*ChangeLog*" --exclude="*.order" -n'
