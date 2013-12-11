@@ -158,8 +158,8 @@ prepare_clang_index() {
 }
 
 commit_clang_index() {
-    cat $CLANG_COMPLETE_CONFIG_PATH/* | sort -u
     # TODO save into $NIX/.clang_complete
+    #cat $CLANG_COMPLETE_CONFIG_PATH/* | sort -u > ...
     unset CLANG_COMPLETE_CONFIG_PATH
 }
 
