@@ -1,3 +1,9 @@
 [submodule "src/nix"]
 	path = src/nix
 	url = https://github.com/WebKitNix/webkitnix.git
+[submodule "src/drowser"]
+	path = src/drowser
+	url = git@github.com:WebKitNix/drowser.git
+[submodule "src/libwebrtc-meta"]
+	path = src/libwebrtc-meta
+	url = git@github.com:WebKitNix/libwebrtc-meta.git
