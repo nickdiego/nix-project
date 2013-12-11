@@ -1,0 +1,55 @@
+<html>
+    <head></head>
+    <body>
+        <script>
+
+        var audioContext;
+        var audioURL = "http://localhost:8000/basic-tests/chicken.ogg";
+
+        function loadSound(url, callback) {
+            var request = new XMLHttpRequest();
+            request.open('GET', url, true);
+            request.responseType = 'arraybuffer';
+
+            // Decode asynchronously
+            request.onload = function() {
+                audioContext.decodeAudioData(request.response, callback, 
+                    function(err) {
+                            console.error("Error decoding buffer :( -> " + err);
+                    }
+                );
+            };
+
+            request.onerror = function(err) {
+                console.error("Error downloading song :(");
+            };
+
+            console.log("Downloading audio...");
+            request.send();
+        }
+
+        function playSound(buffer) {
+            var source = audioContext.createBufferSource(); // creates a sound source
+            source.buffer = buffer;                    // tell the source which sound to play
+            source.connect(audioContext.destination);       // connect the source to the context's destination (the speakers)
+            source.start(0);                           // play the source now
+        }
+
+        try {
+            window.AudioContext = window.AudioContext||window.webkitAudioContext;
+            audioContext = new AudioContext();
+            console.log("AudioContext ok!");
+
+            loadSound(audioURL, function(buffer) {
+                console.log("Fully loaded, ready to play :)");
+                playSound(buffer);
+            });
+
+        }
+        catch(e) {
+            console.error('Error :( ' + e);
+        }
+
+        </script>
+    </body>
+</html>

@@ -1,0 +1,39 @@
+<html>
+<body>
+
+<audio controls></audio>
+    <input onclick="startCapture()" type="button" value="start capture" />
+
+    <script>
+      var onFail = function(e) {
+        console.log('Rejected!', e);
+      };
+
+      var onSuccess = function(s) {
+        playing = true;
+        audio.src = window.URL.createObjectURL(s);
+      }
+
+      window.URL = window.URL || window.webkitURL;
+      navigator.getUserMedia  = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+
+      var audio = document.querySelector('audio');
+      var playing = false;
+
+      function startCapture() {
+        if (playing) {
+            console.log('already playing...');
+            return;
+        }
+        if (navigator.getUserMedia) {
+          navigator.getUserMedia({audio: true}, onSuccess, onFail);
+        } else {
+          console.log('navigator.getUserMedia not present');
+        }
+      }
+
+    </script>
+
+</body>
+</html>
+

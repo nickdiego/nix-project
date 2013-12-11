@@ -1,0 +1,21 @@
+<html>
+    <body>
+        <script>
+            document.write("Trying to get a Stream Audio...</br>");
+            navigator.webkitGetUserMedia({ "audio": true, "video": false }, gotStream, logError);
+
+            function gotStream (stream) {
+                document.write("Got a Stream Audio!</br>");
+                window.AudioContext = window.webkitAudioContext;
+                var audioContext = new AudioContext();
+                var mediaStreamSource = audioContext.createMediaStreamSource( stream );
+                mediaStreamSource.connect( audioContext.destination );
+            }
+
+            function logError (error) {
+                document.write("Got an Error!</br>");
+                document.write(error.name + ": " + error.message);
+            }
+        </script>
+    </body>
+</html>

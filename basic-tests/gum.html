@@ -1,0 +1,22 @@
+<html>
+    <head></head>
+    <body>
+        <script>
+
+            var context = new window.webkitAudioContext();
+
+            function onFail(error) {
+                console.error('failed: ', error, ' :(');
+            }
+
+            function gotAudioStream(stream) {
+                console.log('got audio stream!');
+                var microphone = context.createMediaStreamSource(stream);
+                microphone.connect(context.destination);
+            }
+
+            navigator.webkitGetUserMedia({audio: true}, gotAudioStream, onFail);
+
+        </script>
+    </body>
+</html>
